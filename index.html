@@ -1,0 +1,1232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>&gt; outlier — podcast episode console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.5.4/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<style>
+/* Hallmark · genre: atmospheric · theme: Terminal · nav: N8 Terminal command · footer: Ft4 Dense colophon
+ * app-scope: functional tool, not a marketing page — information architecture (console + results table)
+ * preserved verbatim per redesign rules; only token system, type voice, nav/footer archetypes,
+ * and interaction states were rebuilt. designed-as-app.
+ * pre-emit critique: P5 H4 E5 S4 R5 V5
+ */
+
+:root{
+  /* ---- Locked tokens (OKLCH) — Terminal theme: dark paper, mono throughout, phosphor amber ---- */
+  --color-paper:      oklch(15% 0.010 60);
+  --color-paper-2:    oklch(19% 0.012 60);
+  --color-paper-3:    oklch(23% 0.014 60);
+  --color-ink:        oklch(94% 0.020 80);
+  --color-ink-2:      oklch(70% 0.020 70);
+  --color-ink-3:      oklch(52% 0.018 65);
+  --color-rule:       oklch(30% 0.016 60);
+  --color-accent:     oklch(78% 0.150 70);   /* phosphor amber — views */
+  --color-accent-ink: oklch(15% 0.020 60);
+  --color-focus:      oklch(78% 0.150 70);
+  --color-signal:     oklch(74% 0.140 142);  /* phosphor green — comments (functional, not decorative) */
+  --color-error:      oklch(68% 0.150 25);
+
+  --font-mono: "JetBrains Mono", "Commit Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --space-3xs: 0.25rem; --space-2xs: 0.5rem; --space-xs: 0.75rem;
+  --space-sm: 1rem;     --space-md: 1.5rem;  --space-lg: 2rem;
+  --space-xl: 3rem;     --space-2xl: 4.5rem; --space-3xl: 7rem;
+
+  --text-xs: 0.72rem; --text-sm: 0.84rem; --text-md: 1rem;
+  --text-lg: 1.15rem; --text-xl: 1.6rem;  --text-2xl: 2rem;
+
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur-short: 160ms;
+
+  --radius-card: 8px;
+  --radius-input: 5px;
+}
+
+*{ box-sizing: border-box; }
+html, body{ overflow-x: clip; }
+body{
+  margin: 0;
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-mono);
+  font-size: var(--text-md);
+  line-height: 1.55;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+a{ color: inherit; }
+:focus{ outline: none; }
+:focus-visible{
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* ---- N8 · Terminal command nav ---- */
+.termnav{
+  border-bottom: 1px solid var(--color-rule);
+  background: var(--color-paper-2);
+  padding: var(--space-sm) var(--space-lg);
+  font-size: var(--text-sm);
+  color: var(--color-ink-2);
+  overflow-wrap: anywhere;
+}
+.termnav .prompt{ color: var(--color-ink-3); }
+.termnav .flag{ color: var(--color-accent); }
+.termnav .cursor{
+  display: inline-block;
+  width: 0.55em; height: 1em;
+  background: var(--color-accent);
+  margin-left: 2px;
+  vertical-align: -2px;
+  animation: caret 1s steps(2) infinite;
+}
+@keyframes caret{ 50%{ opacity: 0; } }
+@media (prefers-reduced-motion: reduce){ .termnav .cursor{ animation: none; } }
+
+.wrap{ max-width: 1360px; margin: 0 auto; padding: var(--space-2xl) var(--space-lg) var(--space-xl); }
+
+.eyebrow{
+  font-size: var(--text-xs); letter-spacing: 0.14em; text-transform: uppercase;
+  color: var(--color-ink-3); margin: 0 0 var(--space-xs);
+}
+h1{
+  font-family: var(--font-mono); font-weight: 700; font-size: clamp(1.6rem, 3vw + 1rem, var(--text-2xl));
+  letter-spacing: -0.01em; line-height: 1.15; margin: 0; overflow-wrap: anywhere; min-width: 0;
+}
+.sub{ color: var(--color-ink-2); font-size: var(--text-sm); max-width: 60ch; margin: var(--space-xs) 0 0; }
+
+.hero-row{ margin-bottom: var(--space-xl); }
+
+/* ---- Console panel ---- */
+.console{
+  background: var(--color-paper-2);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-card);
+  padding: var(--space-lg);
+  margin-bottom: var(--space-lg);
+}
+.console-grid{ display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
+.console-grid.single{ grid-template-columns: 1fr; max-width: 620px; }
+@media (max-width: 43rem){ .console-grid{ grid-template-columns: 1fr; } }
+
+label{
+  display: block; font-size: var(--text-xs); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--color-ink-3); margin-bottom: var(--space-2xs);
+}
+input[type=text], input[type=password]{
+  width: 100%; background: var(--color-paper); color: var(--color-ink);
+  border: 1px solid var(--color-rule); border-radius: var(--radius-input);
+  padding: 0.7rem 0.75rem; font-size: var(--text-sm); font-family: var(--font-mono);
+  min-height: 44px; transition: border-color var(--dur-short) var(--ease-out);
+}
+input::placeholder{ color: var(--color-ink-3); }
+input:hover{ border-color: var(--color-ink-3); }
+input[aria-invalid="true"]{ border-color: var(--color-error); }
+textarea{
+  width: 100%; background: var(--color-paper); color: var(--color-ink);
+  border: 1px solid var(--color-rule); border-radius: var(--radius-input);
+  padding: 0.7rem 0.75rem; font-size: var(--text-sm); font-family: var(--font-mono);
+  min-height: 44px; resize: vertical; line-height: 1.5;
+  transition: border-color var(--dur-short) var(--ease-out);
+}
+textarea::placeholder{ color: var(--color-ink-3); }
+textarea:hover{ border-color: var(--color-ink-3); }
+textarea[aria-invalid="true"]{ border-color: var(--color-error); }
+
+.channel-inputs{ display: flex; flex-direction: column; gap: var(--space-2xs); }
+.channel-row{ display: flex; gap: var(--space-2xs); }
+.channel-row input{ flex: 1; min-width: 0; }
+.remove-channel-btn{
+  flex: none; width: 44px; height: 44px;
+  background: var(--color-paper); border: 1px solid var(--color-rule); color: var(--color-ink-3);
+  border-radius: var(--radius-input); cursor: pointer; font-size: var(--text-md); line-height: 1;
+  transition: border-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out);
+}
+@media (hover: hover){ .remove-channel-btn:hover{ border-color: var(--color-error); color: var(--color-error); } }
+.add-channel-btn{
+  margin-top: var(--space-2xs);
+  background: transparent; border: 1px dashed var(--color-rule); color: var(--color-ink-2);
+  font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: 0.02em;
+  padding: 0.6rem 0.9rem; min-height: 44px; width: 100%; border-radius: var(--radius-input); cursor: pointer;
+  transition: border-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out);
+}
+@media (hover: hover){ .add-channel-btn:hover{ border-color: var(--color-accent); color: var(--color-accent); } }
+
+.csv-upload{ margin-top: var(--space-sm); display: flex; align-items: center; gap: var(--space-sm); flex-wrap: wrap; }
+.csv-upload-btn{
+  display: inline-flex; align-items: center; gap: 6px;
+  background: var(--color-paper); border: 1px solid var(--color-rule); color: var(--color-ink-2);
+  font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: 0.02em;
+  padding: 0.6rem 0.9rem; min-height: 44px; border-radius: var(--radius-input); cursor: pointer;
+  transition: border-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out);
+}
+@media (hover: hover){ .csv-upload-btn:hover{ border-color: var(--color-ink-2); color: var(--color-ink); } }
+.csv-upload-btn:focus-visible{ outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.csv-status{
+  font-size: var(--text-xs); color: var(--color-ink-2); display: flex; align-items: center; gap: var(--space-xs);
+}
+.csv-status .clear-csv{
+  background: none; border: none; color: var(--color-ink-3); cursor: pointer; text-decoration: underline;
+  font-family: var(--font-mono); font-size: var(--text-xs); padding: 0;
+}
+.csv-status .clear-csv:hover{ color: var(--color-error); }
+
+.progress-track{
+  height: 4px; background: var(--color-paper-3); border-radius: 2px; margin-top: var(--space-xs); overflow: hidden;
+}
+.progress-fill{ height: 100%; width: 0%; background: var(--color-accent); transition: width var(--dur-short) var(--ease-out); }
+
+.bulk-bar{
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-md);
+  margin-bottom: var(--space-md); padding: var(--space-sm) var(--space-md);
+  background: var(--color-paper-2); border: 1px solid var(--color-rule); border-radius: var(--radius-card);
+  font-size: var(--text-xs); color: var(--color-ink-2); flex-wrap: wrap;
+}
+
+.tabs-select{
+  width: 100%; max-width: 420px; margin-bottom: var(--space-md);
+  background: var(--color-paper-2); color: var(--color-ink);
+  border: 1px solid var(--color-rule); border-radius: var(--radius-input);
+  padding: 0.65rem 0.75rem; font-family: var(--font-mono); font-size: var(--text-sm); min-height: 44px;
+}
+.hint{ font-size: var(--text-xs); color: var(--color-ink-3); margin-top: var(--space-2xs); line-height: 1.5; }
+.hint a{ color: var(--color-accent); text-decoration: underline; text-decoration-color: var(--color-rule); }
+.hint a:hover{ text-decoration-color: var(--color-accent); }
+
+.console-footer{
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-md);
+  margin-top: var(--space-md); flex-wrap: wrap;
+}
+.privacy-note{ font-size: var(--text-xs); color: var(--color-ink-3); max-width: 46ch; line-height: 1.5; }
+
+button.run{
+  background: var(--color-accent); color: var(--color-accent-ink);
+  border: 1px solid var(--color-accent); font-family: var(--font-mono); font-weight: 700;
+  font-size: var(--text-xs); letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 0.85rem 1.4rem; min-height: 44px; border-radius: var(--radius-input);
+  cursor: pointer; white-space: nowrap;
+  transition: background var(--dur-short) var(--ease-out), transform var(--dur-short) var(--ease-out);
+}
+@media (hover: hover){
+  button.run:hover:not(:disabled){ background: oklch(84% 0.15 70); }
+}
+button.run:active:not(:disabled){ transform: translateY(1px); }
+button.run:disabled{
+  background: var(--color-paper-3); border-color: var(--color-rule); color: var(--color-ink-3);
+  cursor: not-allowed;
+}
+button.run[data-loading="true"]::after{
+  content: ""; display: inline-block; width: 0.6em; height: 0.6em; margin-left: 0.5em;
+  border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%;
+  animation: spin 0.7s linear infinite; vertical-align: -1px;
+}
+@keyframes spin{ to{ transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce){ button.run[data-loading="true"]::after{ animation: none; } }
+
+.status-row{
+  display: flex; align-items: center; gap: var(--space-2xs);
+  font-size: var(--text-xs); color: var(--color-ink-2);
+  margin: var(--space-sm) 0 0; min-height: 16px;
+}
+.status-row .prompt{ color: var(--color-accent); }
+.error-box{
+  background: color-mix(in oklch, var(--color-error) 12%, var(--color-paper));
+  border: 1px solid var(--color-error); color: oklch(88% 0.06 25);
+  border-radius: var(--radius-input); padding: var(--space-sm) var(--space-md);
+  font-size: var(--text-sm); margin-top: var(--space-sm); line-height: 1.5;
+}
+.error-box::before{ content: "✕ "; color: var(--color-error); }
+
+/* ---- Channel tabs ---- */
+.tabs-bar{
+  display: flex; align-items: stretch; gap: 2px; margin-bottom: var(--space-md);
+  border-bottom: 1px solid var(--color-rule); flex-wrap: wrap;
+}
+.tab-btn{
+  background: transparent; border: 1px solid transparent; border-bottom: none;
+  color: var(--color-ink-3); font-family: var(--font-mono); font-size: var(--text-xs);
+  padding: 0.65rem 1rem; min-height: 44px; cursor: pointer; letter-spacing: 0.01em;
+  border-radius: var(--radius-input) var(--radius-input) 0 0;
+  display: flex; align-items: center; gap: var(--space-2xs); max-width: 220px;
+  transition: color var(--dur-short) var(--ease-out), background var(--dur-short) var(--ease-out);
+}
+.tab-btn span.tab-label{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (hover: hover){ .tab-btn:hover{ color: var(--color-ink-2); background: var(--color-paper-2); } }
+.tab-btn[aria-selected="true"]{
+  color: var(--color-ink); background: var(--color-paper-2);
+  border-color: var(--color-rule); position: relative; top: 1px;
+}
+.tab-dot{ width: 6px; height: 6px; border-radius: 50%; flex: none; }
+.tab-dot.ok{ background: var(--color-signal); }
+.tab-dot.err{ background: var(--color-error); }
+.tab-dot.pending{ background: var(--color-ink-3); animation: caret 1s steps(2) infinite; }
+@media (prefers-reduced-motion: reduce){ .tab-dot.pending{ animation: none; } }
+
+/* ---- Channel identity strip ---- */
+.channel-strip{
+  display: flex; align-items: center; gap: var(--space-sm);
+  margin-bottom: var(--space-md); padding: var(--space-sm) var(--space-md);
+  background: var(--color-paper-2); border: 1px solid var(--color-rule); border-radius: var(--radius-card);
+}
+.channel-strip img{ width: 40px; height: 40px; border-radius: 50%; }
+.channel-strip .name{ font-weight: 600; font-size: var(--text-sm); }
+.channel-strip .meta{ font-size: var(--text-xs); color: var(--color-ink-3); margin-top: 2px; }
+
+/* ---- Summary stat cards ---- */
+.stats-row{ display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--space-sm); margin-bottom: var(--space-lg); }
+@media (max-width: 43rem){ .stats-row{ grid-template-columns: repeat(2, 1fr); } }
+.stat-card{
+  background: var(--color-paper-2); border: 1px solid var(--color-rule);
+  border-radius: var(--radius-card); padding: var(--space-sm) var(--space-md);
+}
+.stat-card .label{ font-size: var(--text-xs); letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-ink-3); }
+.stat-card .value{ font-weight: 700; font-size: var(--text-xl); margin-top: var(--space-3xs); overflow-wrap: anywhere; }
+
+/* ---- Sort toolbar ---- */
+.toolbar{
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: var(--space-sm); flex-wrap: wrap; gap: var(--space-sm);
+}
+.toolbar .title{ font-weight: 700; font-size: var(--text-lg); }
+.sort-btns{ display: flex; gap: var(--space-2xs); flex-wrap: wrap; }
+.sort-btn{
+  background: var(--color-paper-2); border: 1px solid var(--color-rule); color: var(--color-ink-2);
+  font-family: var(--font-mono); font-size: var(--text-xs); letter-spacing: 0.02em;
+  padding: 0.6rem 0.9rem; min-height: 44px; border-radius: var(--radius-input); cursor: pointer;
+  transition: border-color var(--dur-short) var(--ease-out), color var(--dur-short) var(--ease-out);
+}
+@media (hover: hover){ .sort-btn:hover{ border-color: var(--color-ink-3); } }
+.sort-btn[aria-pressed="true"].by-views{ border-color: var(--color-accent); color: var(--color-accent); }
+.sort-btn[aria-pressed="true"].by-comments{ border-color: var(--color-signal); color: var(--color-signal); }
+.export-btn{ color: var(--color-ink); }
+@media (hover: hover){ .export-btn:hover{ border-color: var(--color-ink); color: var(--color-ink); background: var(--color-paper-3); } }
+
+/* ---- Table ---- */
+.table-scroll{ overflow-x: auto; }
+.table-wrap{
+  background: var(--color-paper-2); border: 1px solid var(--color-rule);
+  border-radius: var(--radius-card); overflow: hidden;
+}
+table{ width: 100%; border-collapse: collapse; font-size: var(--text-sm); min-width: 56rem; table-layout: fixed; }
+colgroup col.col-rank{ width: 3.5%; }
+colgroup col.col-episode{ width: 34%; }
+colgroup col.col-guest{ width: 15%; }
+colgroup col.col-views{ width: 9%; }
+colgroup col.col-view-ratio{ width: 13.5%; }
+colgroup col.col-comments{ width: 9%; }
+colgroup col.col-comment-ratio{ width: 16%; }
+thead th{
+  text-align: left; font-size: var(--text-xs); letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--color-ink-3); padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-rule); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+tbody td{ padding: var(--space-sm) var(--space-md); border-bottom: 1px solid var(--color-rule); vertical-align: top; overflow-wrap: break-word; }
+tbody tr:last-child td{ border-bottom: none; }
+@media (hover: hover){ tbody tr:hover{ background: var(--color-paper-3); } }
+.rank{ color: var(--color-ink-3); font-size: var(--text-xs); padding-top: calc(var(--space-sm) + 2px); }
+.episode-cell{ display: flex; align-items: flex-start; gap: var(--space-xs); min-width: 0; }
+.thumb-link{ flex: none; display: block; line-height: 0; }
+.thumb{
+  width: 96px; height: 54px; object-fit: cover; border-radius: 4px;
+  border: 1px solid var(--color-rule); background: var(--color-paper-3); display: block;
+}
+.thumb-empty{ width: 96px; height: 54px; border-radius: 4px; border: 1px solid var(--color-rule); background: var(--color-paper-3); display: block; }
+.episode-text{ min-width: 0; flex: 1; }
+.vid-title{ color: var(--color-ink); text-decoration: none; font-weight: 500; display: block; overflow-wrap: break-word; line-height: 1.4; }
+.vid-title:hover{ color: var(--color-accent); text-decoration: underline; }
+.vid-meta{ font-size: var(--text-xs); color: var(--color-ink-3); margin-top: 3px; }
+.guest{ color: var(--color-ink-2); font-size: var(--text-sm); overflow-wrap: break-word; }
+.num{ color: var(--color-ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.meter-cell{ display: flex; align-items: center; gap: var(--space-2xs); min-width: 130px; }
+.meter-track{ flex: 1; height: 5px; background: var(--color-rule); border-radius: 3px; overflow: hidden; }
+.meter-fill{ height: 100%; border-radius: 3px; }
+.meter-fill.views{ background: var(--color-accent); }
+.meter-fill.comments{ background: var(--color-signal); }
+.ratio-val{ font-weight: 700; font-size: var(--text-sm); min-width: 44px; text-align: right; font-variant-numeric: tabular-nums; }
+.ratio-val.hot-views{ color: var(--color-accent); }
+.ratio-val.hot-comments{ color: var(--color-signal); }
+.na{ color: var(--color-ink-3); font-size: var(--text-sm); }
+
+.empty-state{ text-align: center; padding: var(--space-2xl) var(--space-md); color: var(--color-ink-3); }
+.empty-state .big{ font-weight: 700; font-size: var(--text-lg); color: var(--color-ink-2); margin-bottom: var(--space-2xs); }
+
+/* ---- Ft4 · Dense colophon footer ---- */
+footer.colophon{
+  border-top: 1px solid var(--color-rule);
+  background: var(--color-paper-2);
+  padding: var(--space-lg);
+  margin-top: var(--space-2xl);
+}
+footer.colophon .colophon-inner{
+  max-width: 1120px; margin: 0 auto;
+  font-size: var(--text-xs); color: var(--color-ink-3); line-height: 1.7;
+}
+footer.colophon strong{ color: var(--color-ink-2); }
+footer.colophon .legend-dot{ display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+</style>
+</head>
+<body>
+
+<nav class="termnav" aria-label="primary">
+  <span class="prompt">&gt;</span> outlier <span class="flag">--source</span> youtube <span class="flag">--window</span> 18mo <span class="flag">--min-duration</span> 10m<span class="cursor" aria-hidden="true"></span>
+</nav>
+
+<div class="wrap">
+
+  <div class="hero-row">
+    <p class="eyebrow">Signal / noise analysis</p>
+    <h1>Find the episodes that broke the pattern.</h1>
+    <p class="sub">Paste one or more YouTube podcast channels below. This pulls every long-form episode from the last 18 months per channel and ranks which ones pulled in views or comments far outside that channel's average — each channel gets its own tab.</p>
+  </div>
+
+  <div class="console">
+    <div class="console-grid single">
+      <div>
+        <label for="channelInputs">Channel links (one per box)</label>
+        <div id="channelInputs" class="channel-inputs"></div>
+        <button type="button" id="addChannelBtn" class="add-channel-btn">+ add another channel</button>
+        <p class="hint">Any format works — full URL, @handle, legacy /c/ or /user/ link, or a raw UC... channel ID. Up to 150 channels per run.</p>
+
+        <div class="csv-upload">
+          <label for="csvFile" class="csv-upload-btn">↑ upload a CSV of channels</label>
+          <input type="file" id="csvFile" accept=".csv,text/csv" style="display:none;">
+          <div id="csvStatus" class="csv-status" style="display:none;"></div>
+        </div>
+        <p class="hint">One channel per row. If there's a header, a column named "channel", "url", "handle", or similar is used automatically — otherwise the first column is used.</p>
+      </div>
+    </div>
+    <div class="console-footer">
+      <p class="privacy-note">Analyzes every video over 10 minutes published in the last 18 months, per channel. No cap on videos — larger back-catalogs take longer and use more of the server's daily quota (roughly 1 unit per 50 videos).</p>
+      <button class="run" id="runBtn" type="button">Find outliers</button>
+    </div>
+    <div class="status-row" id="statusRow" style="display:none;" role="status" aria-live="polite">
+      <span class="prompt">&gt;</span><span id="statusText"></span>
+    </div>
+    <div class="progress-track" id="progressTrack" style="display:none;"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="error-box" id="errorBox" style="display:none;" role="alert"></div>
+  </div>
+
+  <div id="bulkBar" class="bulk-bar" style="display:none;">
+    <span id="bulkSummary"></span>
+    <button type="button" id="exportAllBtn" class="sort-btn export-btn">export all to excel (.xlsx) ↓</button>
+  </div>
+
+  <div id="results"></div>
+
+</div>
+
+<footer class="colophon">
+  <div class="colophon-inner">
+    <strong>outlier console</strong> — a client-side tool. your API key and results live only in this browser tab; nothing is persisted or sent to any server but Google's YouTube Data API.<br>
+    <span class="legend-dot" style="background:var(--color-accent)"></span>view ratio = episode views ÷ average views across all qualifying episodes.
+    <span class="legend-dot" style="background:var(--color-signal); margin-left: var(--space-sm);"></span>comment ratio = episode comments ÷ average comments across episodes with comments enabled.<br>
+    guest names are pattern-matched from the title/description and may miss unusual formats.
+  </div>
+</footer>
+
+<script>
+// ---------- Helpers ----------
+async function apiGet(endpoint, params){
+  const url = new URL('/api/youtube', window.location.origin);
+  url.searchParams.set('endpoint', endpoint);
+  Object.entries(params).forEach(([k,v]) => url.searchParams.set(k, v));
+  const res = await fetch(url.toString());
+  const data = await res.json();
+  if (!res.ok || data.error) {
+    const reason = data?.error?.errors?.[0]?.reason || data?.error?.status || 'unknown_error';
+    const message = data?.error?.message || 'Request failed.';
+    const err = new Error(message);
+    err.reason = reason;
+    throw err;
+  }
+  return data;
+}
+
+function parseISODuration(iso){
+  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  const h = parseInt(m[1]||0,10), mi = parseInt(m[2]||0,10), s = parseInt(m[3]||0,10);
+  return h*3600 + mi*60 + s;
+}
+
+function extractChannelRef(raw){
+  const input = raw.trim();
+  const patterns = [
+    { re: /youtube\.com\/channel\/(UC[\w-]+)/i, type: 'id' },
+    { re: /youtube\.com\/@([\w.-]+)/i, type: 'handle' },
+    { re: /youtube\.com\/c\/([\w.-]+)/i, type: 'legacy' },
+    { re: /youtube\.com\/user\/([\w.-]+)/i, type: 'legacy' },
+  ];
+  for (const p of patterns){
+    const m = input.match(p.re);
+    if (m) return { type: p.type, value: m[1] };
+  }
+  if (input.startsWith('@')) return { type: 'handle', value: input.slice(1) };
+  if (/^UC[\w-]{20,}$/.test(input)) return { type: 'id', value: input };
+  return { type: 'guess', value: input.replace(/^@/, '') };
+}
+
+async function resolveChannel(ref){
+  const part = 'snippet,contentDetails,statistics';
+  if (ref.type === 'id'){
+    const r = await apiGet('channels', { part, id: ref.value });
+    if (r.items?.length) return r.items[0];
+    throw new Error('No channel found with that ID.');
+  }
+  if (ref.type === 'handle' || ref.type === 'guess'){
+    // handles can't contain spaces — try the raw value, then a no-space slug
+    const slugs = [...new Set([ref.value, ref.value.replace(/\s+/g, '')])];
+    for (const slug of slugs){
+      try {
+        const r = await apiGet('channels', { part, forHandle: '@' + slug });
+        if (r.items?.length) return r.items[0];
+      } catch(e){ if (e.reason === 'keyInvalid' || e.reason === 'quotaExceeded') throw e; }
+    }
+  }
+  if (ref.type === 'legacy' || ref.type === 'guess'){
+    const slugs = [...new Set([ref.value, ref.value.replace(/\s+/g, '')])];
+    for (const slug of slugs){
+      try {
+        const r = await apiGet('channels', { part, forUsername: slug });
+        if (r.items?.length) return r.items[0];
+      } catch(e){ if (e.reason === 'keyInvalid' || e.reason === 'quotaExceeded') throw e; }
+    }
+  }
+  // Fallback: search by name. YouTube's channel search ranks by text relevance, not
+  // popularity, so a small unrelated channel that happens to share the exact name can
+  // outrank the real one (e.g. searching "Jon Stewart" can surface a fan/lookalike
+  // channel over his actual show). Pull several candidates and prefer the one with the
+  // most subscribers, since that's a much better signal of "the channel you meant."
+  const r = await apiGet('search', { part: 'snippet', q: ref.value, type: 'channel', maxResults: 5 });
+  const candidateIds = (r.items || []).map(item => item.id.channelId || item.snippet.channelId).filter(Boolean);
+  if (candidateIds.length){
+    const r2 = await apiGet('channels', { part, id: candidateIds.join(',') });
+    if (r2.items?.length){
+      const bySubs = [...r2.items].sort((a, b) => (parseInt(b.statistics?.subscriberCount || 0, 10) - parseInt(a.statistics?.subscriberCount || 0, 10)));
+      return bySubs[0];
+    }
+  }
+  throw new Error("Couldn't find a channel matching that link. Double-check it and try again.");
+}
+
+async function fetchUploadIds(playlistId, cutoffMs, statusCb){
+  let out = [];
+  let pageToken = '';
+  let stop = false;
+  let page = 0;
+  const MAX_PAGES = 80;
+  while (!stop && page < MAX_PAGES){
+    const params = { part: 'contentDetails', playlistId, maxResults: 50 };
+    if (pageToken) params.pageToken = pageToken;
+    const r = await apiGet('playlistItems', params);
+    for (const item of (r.items || [])){
+      const publishedAt = item.contentDetails.videoPublishedAt;
+      if (!publishedAt) continue;
+      const pubMs = new Date(publishedAt).getTime();
+      if (pubMs < cutoffMs){ stop = true; continue; }
+      out.push(item.contentDetails.videoId);
+    }
+    page++;
+    statusCb(`scanning uploads... ${out.length} videos found in range (page ${page})`);
+    if (!r.nextPageToken) break;
+    pageToken = r.nextPageToken;
+  }
+  return out;
+}
+
+async function fetchVideoDetails(ids, statusCb){
+  const out = [];
+  for (let i = 0; i < ids.length; i += 50){
+    const batch = ids.slice(i, i + 50);
+    const r = await apiGet('videos', { part: 'snippet,contentDetails,statistics', id: batch.join(',') });
+    out.push(...(r.items || []));
+    statusCb(`fetching episode stats... ${Math.min(i + 50, ids.length)}/${ids.length}`);
+  }
+  return out;
+}
+
+const STOPWORDS = new Set([
+  'Episode','Podcast','Part','Season','Live','The','Full','Interview','Ep','Clip','Highlights',
+  'Q&A','Special','Vol','What','Why','How','Who','Does','Did','Is','Are','Was','Were','One',
+  'Good','Bad','Things','Happen','Happened','Still','Trying','Figure','Out','Really','Actually',
+  'Massacre','Minutes','This','That','His','Her','Their','Its','About','From','With','Into'
+]);
+
+function looksLikeName(str){
+  const words = str.trim().split(/\s+/);
+  if (words.length < 2 || words.length > 4) return false;
+  for (const w of words){
+    if (!/^[A-Z][a-zA-Z.'-]*$/.test(w)) return false;
+    if (STOPWORDS.has(w)) return false;
+  }
+  return true;
+}
+function cleanCandidate(str){ return str.replace(/[.,:;!?]+$/, '').trim(); }
+
+// A name token: capitalized word, letters/apostrophes/hyphens only.
+const NAME_WORD = "[A-Z][a-zA-Z'-]*";
+
+function extractGuest(title, description){
+  // Treat the last pipe-separated segment as a likely show name and search the rest first.
+  const pipeParts = title.split('|').map(s => s.trim()).filter(Boolean);
+  const primary = pipeParts.length > 1 ? pipeParts.slice(0, -1).join(' | ') : title;
+
+  const orderedPatterns = [
+    // explicit markers: "with X", "ft. X", "feat. X", "w/ X"
+    { re: new RegExp(`\\bwith\\s+(${NAME_WORD}(?:\\s+${NAME_WORD}){0,3})`) },
+    { re: new RegExp(`\\bft\\.?\\s+(${NAME_WORD}(?:\\s+${NAME_WORD}){0,3})`, 'i') },
+    { re: new RegExp(`\\bfeat(?:uring)?\\.?\\s+(${NAME_WORD}(?:\\s+${NAME_WORD}){0,3})`, 'i') },
+    { re: new RegExp(`\\bw\\/\\s*(${NAME_WORD}(?:\\s+${NAME_WORD}){0,3})`) },
+    // leading name followed by "on" — "Scott Pelley on His Firing..."
+    { re: new RegExp(`^(${NAME_WORD}(?:\\s+${NAME_WORD}){0,3})\\s+on\\s+`) },
+    // leading name followed by a common subject verb — "Mick Jagger Can't Name...", "X Talks About..."
+    { re: new RegExp(`^(${NAME_WORD}(?:\\s+${NAME_WORD}){0,3})\\s+(?:Can't|Cannot|Won't|Doesn't|Isn't|Wasn't|Weren't|Don't|Didn't|Talks|Opens|Reflects|Explains|Shares|Breaks|Wants|Gets|Says|Discusses|Reveals|Responds|Speaks)\\b` ) },
+    // "What/Why/How Does/Did/Is X (Really|Actually|Still)? Believe/Think/Want/..." — capture is intentionally minimal (lazy)
+    { re: new RegExp(`\\b(?:What|Why|How)\\s+(?:Does|Did|Is|Are|Was|Were)\\s+(${NAME_WORD}(?:\\s+${NAME_WORD}){0,3}?)\\s+(?:Really\\s+|Actually\\s+|Still\\s+)?(?:Believe|Think|Want|Do|Feel|Say|Know|Mean|Regret|Remember)\\b`, 'i') },
+    // "... Happen(ed) to X" — greedy is safe here because punctuation naturally bounds the name
+    { re: new RegExp(`\\bhappen(?:ed)?\\s+to\\s+(${NAME_WORD}(?:\\s+${NAME_WORD}){0,3})`, 'i') },
+    // trailing "to X" right at the end of the (pipe-stripped) title
+    { re: new RegExp(`\\bto\\s+(${NAME_WORD}(?:\\s+${NAME_WORD}){0,3})[?.!]?\\s*$`) },
+  ];
+
+  for (const { re } of orderedPatterns){
+    const m = primary.match(re);
+    if (m) {
+      const candidate = cleanCandidate(m[1]);
+      const words = candidate.split(/\s+/);
+      if (words.length >= 2 && !words.some(w => STOPWORDS.has(w))) return candidate;
+    }
+  }
+
+  // fallback: scan pipe/dash/colon segments (excluding the last, likely-show-name, pipe segment)
+  const segments = primary.split(/\s*[|\u2013\u2014-]\s*|:\s*/).map(s => s.trim()).filter(Boolean);
+  for (const seg of segments){
+    if (looksLikeName(seg)) return seg;
+  }
+
+  // last resort: same marker patterns against the first 200 chars of the description
+  if (description){
+    const shortDesc = description.slice(0, 200);
+    for (const { re } of orderedPatterns.slice(0, 4)){
+      const m = shortDesc.match(re);
+      if (m) return cleanCandidate(m[1]);
+    }
+  }
+  return '—';
+}
+
+function fmtNum(n){
+  if (n === null || n === undefined) return '—';
+  return Number(n).toLocaleString('en-US');
+}
+function fmtDate(iso){
+  return new Date(iso).toLocaleDateString('en-US', { year:'numeric', month:'short', day:'numeric' });
+}
+function fmtRatio(r){ return (Math.round(r*100)/100).toFixed(2) + 'x'; }
+function escapeHtml(str){
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+let tabs = [];       // { id, label, channel, rows, sortMode, status: 'pending'|'ok'|'empty'|'error', message }
+let activeTabId = null;
+
+function computeRatios(tab){
+  const rowsList = tab.rows;
+  const withViews = rowsList;
+  const withComments = rowsList.filter(r => r.commentCount !== null);
+  const avgViews = withViews.length ? withViews.reduce((a,r) => a + r.viewCount, 0) / withViews.length : 0;
+  const avgComments = withComments.length ? withComments.reduce((a,r) => a + r.commentCount, 0) / withComments.length : 0;
+  rowsList.forEach(r => {
+    r.viewRatio = avgViews ? r.viewCount / avgViews : 0;
+    r.commentRatio = (r.commentCount !== null && avgComments) ? r.commentCount / avgComments : null;
+  });
+  return { avgViews, avgComments };
+}
+
+function renderAll(){
+  const resultsEl = document.getElementById('results');
+  if (!tabs.length){ resultsEl.innerHTML = ''; return; }
+  if (!activeTabId || !tabs.some(t => t.id === activeTabId)) activeTabId = tabs[0].id;
+
+  const statusSymbol = (t) => t.status === 'pending' ? '… ' : (t.status === 'error' ? '✕ ' : '');
+
+  if (tabs.length > 8){
+    resultsEl.innerHTML = `<select id="tabsSelect" class="tabs-select" aria-label="channels"></select><div id="tabContent"></div>`;
+    const select = document.getElementById('tabsSelect');
+    select.innerHTML = tabs.map(t => `<option value="${t.id}" ${t.id === activeTabId ? 'selected' : ''}>${escapeHtml(statusSymbol(t) + t.label)}</option>`).join('');
+    select.addEventListener('change', () => { activeTabId = select.value; renderAll(); });
+  } else {
+    resultsEl.innerHTML = `<div id="tabsBar" class="tabs-bar" role="tablist" aria-label="channels"></div><div id="tabContent"></div>`;
+    const tabsBar = document.getElementById('tabsBar');
+    tabsBar.innerHTML = tabs.map(t => `
+      <button class="tab-btn" role="tab" data-tab-id="${t.id}" aria-selected="${t.id === activeTabId}" type="button">
+        <span class="tab-dot ${t.status === 'pending' ? 'pending' : (t.status === 'error' ? 'err' : 'ok')}"></span>
+        <span class="tab-label">${escapeHtml(t.label)}</span>
+      </button>
+    `).join('');
+    tabsBar.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => { activeTabId = btn.dataset.tabId; renderAll(); });
+    });
+  }
+
+  renderTabContent(tabs.find(t => t.id === activeTabId));
+  renderBulkBar();
+}
+
+function renderBulkBar(){
+  const bulkBar = document.getElementById('bulkBar');
+  const okCount = tabs.filter(t => t.status === 'ok').length;
+  if (!okCount){ bulkBar.style.display = 'none'; return; }
+  bulkBar.style.display = 'flex';
+  document.getElementById('bulkSummary').textContent = `${okCount} of ${tabs.length} show${tabs.length===1?'':'s'} ready to export`;
+}
+
+function renderTabContent(tab){
+  const contentEl = document.getElementById('tabContent');
+  if (!tab) { contentEl.innerHTML = ''; return; }
+
+  if (tab.channel){
+    contentEl.innerHTML = `
+      <div class="channel-strip">
+        <img src="${tab.channel.snippet.thumbnails?.default?.url || ''}" alt="">
+        <div>
+          <div class="name">${escapeHtml(tab.channel.snippet.title)}</div>
+          <div class="meta">${fmtNum(tab.channel.statistics?.subscriberCount)} subscribers · analyzing last 18 months</div>
+        </div>
+      </div>
+      <div id="tabBody"></div>
+    `;
+  } else {
+    contentEl.innerHTML = `<div id="tabBody"></div>`;
+  }
+  const bodyEl = document.getElementById('tabBody');
+
+  if (tab.status === 'pending'){
+    bodyEl.innerHTML = `<div class="empty-state"><div class="big">working...</div><div>${escapeHtml(tab.message || 'fetching this channel now')}</div></div>`;
+    return;
+  }
+  if (tab.status === 'error'){
+    bodyEl.innerHTML = `<div class="error-box" role="alert" style="margin-top:0;">${escapeHtml(tab.message)}</div>`;
+    return;
+  }
+  if (tab.status === 'empty'){
+    bodyEl.innerHTML = `<div class="empty-state"><div class="big">nothing to rank</div><div>${escapeHtml(tab.message)}</div></div>`;
+    return;
+  }
+
+  const { avgViews, avgComments } = computeRatios(tab);
+  const rowsList = tab.rows;
+  const sorted = [...rowsList].sort((a,b) => {
+    if (tab.sortMode === 'views') return b.viewRatio - a.viewRatio;
+    return (b.commentRatio ?? -1) - (a.commentRatio ?? -1);
+  });
+  const dates = rowsList.map(r => new Date(r.publishedAt).getTime());
+  const earliest = fmtDate(new Date(Math.min(...dates)).toISOString());
+  const latest = fmtDate(new Date(Math.max(...dates)).toISOString());
+  const maxViewRatio = Math.max(...rowsList.map(r => r.viewRatio), 1);
+  const maxCommentRatio = Math.max(...rowsList.map(r => r.commentRatio ?? 0), 1);
+
+  bodyEl.innerHTML = `
+    <div class="stats-row">
+      <div class="stat-card"><div class="label">episodes</div><div class="value">${rowsList.length}</div></div>
+      <div class="stat-card"><div class="label">avg views</div><div class="value">${fmtNum(Math.round(avgViews))}</div></div>
+      <div class="stat-card"><div class="label">avg comments</div><div class="value">${fmtNum(Math.round(avgComments))}</div></div>
+      <div class="stat-card"><div class="label">window</div><div class="value" style="font-size: var(--text-sm);">${earliest} – ${latest}</div></div>
+    </div>
+    <div class="toolbar">
+      <div class="title">Ranked episodes</div>
+      <div class="sort-btns" role="group" aria-label="sort outliers">
+        <button class="sort-btn by-views" data-sort="views" aria-pressed="${tab.sortMode==='views'}" type="button">sort: view outliers</button>
+        <button class="sort-btn by-comments" data-sort="comments" aria-pressed="${tab.sortMode==='comments'}" type="button">sort: comment outliers</button>
+        <button class="sort-btn export-btn" id="exportBtn" type="button">export csv ↓</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll">
+      <table>
+        <colgroup>
+          <col class="col-rank"><col class="col-episode"><col class="col-guest">
+          <col class="col-views"><col class="col-view-ratio"><col class="col-comments"><col class="col-comment-ratio">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>#</th><th>episode</th><th>guest</th><th>views</th><th>view ratio</th><th>comments</th><th>comment ratio</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${sorted.map((r,i) => `
+            <tr>
+              <td class="rank">${i+1}</td>
+              <td>
+                <div class="episode-cell">
+                  <a href="https://youtube.com/watch?v=${r.id}" target="_blank" rel="noopener" class="thumb-link" tabindex="-1" aria-hidden="true">
+                    ${r.thumbnail ? `<img class="thumb" src="${r.thumbnail}" alt="" loading="lazy" width="96" height="54">` : `<span class="thumb thumb-empty"></span>`}
+                  </a>
+                  <div class="episode-text">
+                    <a class="vid-title" href="https://youtube.com/watch?v=${r.id}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a>
+                    <div class="vid-meta">${fmtDate(r.publishedAt)} · ${Math.round(r.durationSec/60)} min</div>
+                  </div>
+                </div>
+              </td>
+              <td class="guest">${escapeHtml(r.guest)}</td>
+              <td class="num">${fmtNum(r.viewCount)}</td>
+              <td>
+                <div class="meter-cell">
+                  <div class="meter-track"><div class="meter-fill views" style="width:${Math.min(100, (r.viewRatio/maxViewRatio)*100)}%"></div></div>
+                  <div class="ratio-val ${r.viewRatio>=1.5?'hot-views':''}">${fmtRatio(r.viewRatio)}</div>
+                </div>
+              </td>
+              <td class="num">${r.commentCount !== null ? fmtNum(r.commentCount) : '<span class="na">disabled</span>'}</td>
+              <td>
+                ${r.commentRatio !== null ? `
+                <div class="meter-cell">
+                  <div class="meter-track"><div class="meter-fill comments" style="width:${Math.min(100, (r.commentRatio/maxCommentRatio)*100)}%"></div></div>
+                  <div class="ratio-val ${r.commentRatio>=1.5?'hot-comments':''}">${fmtRatio(r.commentRatio)}</div>
+                </div>` : '<span class="na">—</span>'}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  `;
+
+  bodyEl.querySelectorAll('.sort-btn[data-sort]').forEach(btn => {
+    btn.addEventListener('click', () => { tab.sortMode = btn.dataset.sort; renderTabContent(tab); });
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', () => exportCSV(sorted, tab.sortMode, tab.label));
+}
+
+function csvEscape(val){
+  const str = String(val ?? '');
+  if (/[",\n]/.test(str)) return '"' + str.replace(/"/g, '""') + '"';
+  return str;
+}
+
+function exportCSV(sortedRows, mode, channelLabel){
+  const header = ['rank','title','url','guest','published','duration_min','views','view_ratio','comments','comment_ratio'];
+  const lines = [header.join(',')];
+  sortedRows.forEach((r, i) => {
+    lines.push([
+      i + 1,
+      csvEscape(r.title),
+      `https://youtube.com/watch?v=${r.id}`,
+      csvEscape(r.guest),
+      r.publishedAt.slice(0, 10),
+      Math.round(r.durationSec / 60),
+      r.viewCount,
+      r.viewRatio.toFixed(2),
+      r.commentCount ?? '',
+      r.commentRatio !== null ? r.commentRatio.toFixed(2) : ''
+    ].join(','));
+  });
+  const csv = lines.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = channelLabel.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'channel';
+  a.href = url;
+  a.download = `outliers-${safeName}-sorted-by-${mode}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// ---------- Bulk .xlsx export (one sheet per show) ----------
+function ratioFillArgb(t){
+  t = Math.max(0, Math.min(1, isFinite(t) ? t : 0));
+  const from = [255, 255, 255], to = [87, 187, 138]; // white -> phosphor green
+  const rgb = from.map((c, i) => Math.round(c + (to[i] - c) * t));
+  return 'FF' + rgb.map(v => v.toString(16).padStart(2, '0')).join('').toUpperCase();
+}
+
+function sanitizeSheetName(name, used){
+  let s = String(name).replace(/[:\\/?*\[\]]/g, '').trim();
+  if (!s) s = 'Show';
+  if (s.length > 31) s = s.slice(0, 31);
+  let candidate = s, n = 2;
+  while (used.has(candidate.toLowerCase())){
+    const suffix = ` ${n}`;
+    candidate = s.slice(0, 31 - suffix.length) + suffix;
+    n++;
+  }
+  used.add(candidate.toLowerCase());
+  return candidate;
+}
+
+async function exportAllToExcel(){
+  const ready = tabs.filter(t => t.status === 'ok');
+  if (!ready.length) return;
+
+  const exportAllBtn = document.getElementById('exportAllBtn');
+  exportAllBtn.disabled = true;
+  const originalLabel = exportAllBtn.textContent;
+  exportAllBtn.textContent = 'building workbook...';
+
+  try {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Outlier Console';
+    workbook.created = new Date();
+    const usedNames = new Set();
+
+    ready.forEach(tab => {
+      const sheetName = sanitizeSheetName(tab.label, usedNames);
+      const sheet = workbook.addWorksheet(sheetName);
+      sheet.columns = [
+        { header: 'Guest (if any)', key: 'guest', width: 22 },
+        { header: 'Views', key: 'views', width: 13 },
+        { header: 'Views/Avg Views', key: 'viewRatio', width: 16 },
+        { header: 'Rank by Outlier Views', key: 'rank', width: 20 },
+        { header: 'Ep Title', key: 'title', width: 50 },
+        { header: 'URL', key: 'url', width: 32 },
+        { header: 'Date Published', key: 'date', width: 15 },
+        { header: 'Duration in Min', key: 'duration', width: 15 },
+        { header: 'Comments', key: 'comments', width: 12 },
+        { header: 'Comments/Avg Comments', key: 'commentRatio', width: 20 },
+      ];
+      const headerRow = sheet.getRow(1);
+      headerRow.font = { bold: true };
+      headerRow.eachCell(cell => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };
+      });
+      sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+      computeRatios(tab);
+      const sorted = [...tab.rows].sort((a, b) => b.viewRatio - a.viewRatio);
+      const maxViewRatio = Math.max(...sorted.map(r => r.viewRatio), 0.0001);
+      const maxCommentRatio = Math.max(...sorted.map(r => r.commentRatio ?? 0), 0.0001);
+
+      sorted.forEach((r, i) => {
+        const row = sheet.addRow({
+          guest: r.guest === '—' ? '' : r.guest,
+          views: r.viewCount,
+          viewRatio: Number(r.viewRatio.toFixed(2)),
+          rank: i + 1,
+          title: r.title,
+          url: `https://youtube.com/watch?v=${r.id}`,
+          date: r.publishedAt.slice(0, 10),
+          duration: Math.round(r.durationSec / 60),
+          comments: r.commentCount ?? '',
+          commentRatio: r.commentRatio !== null ? Number(r.commentRatio.toFixed(2)) : '',
+        });
+
+        const viewRatioCell = row.getCell('viewRatio');
+        viewRatioCell.numFmt = '0.00"x"';
+        viewRatioCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ratioFillArgb(r.viewRatio / maxViewRatio) } };
+
+        if (r.commentRatio !== null){
+          const commentRatioCell = row.getCell('commentRatio');
+          commentRatioCell.numFmt = '0.00"x"';
+          commentRatioCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: ratioFillArgb(r.commentRatio / maxCommentRatio) } };
+        }
+
+        const urlCell = row.getCell('url');
+        urlCell.value = { text: urlCell.value, hyperlink: urlCell.value };
+        urlCell.font = { color: { argb: 'FF1155CC' }, underline: true };
+
+        row.getCell('views').numFmt = '#,##0';
+        row.getCell('comments').numFmt = '#,##0';
+      });
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `podcast-outliers-${new Date().toISOString().slice(0, 10)}.xlsx`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err){
+    showError('Could not build the Excel file: ' + (err.message || 'unknown error'));
+  } finally {
+    exportAllBtn.disabled = false;
+    exportAllBtn.textContent = originalLabel;
+  }
+}
+
+document.getElementById('exportAllBtn').addEventListener('click', exportAllToExcel);
+
+const statusRow = document.getElementById('statusRow');
+const statusText = document.getElementById('statusText');
+const errorBox = document.getElementById('errorBox');
+const runBtn = document.getElementById('runBtn');
+const channelInputsEl = document.getElementById('channelInputs');
+const addChannelBtn = document.getElementById('addChannelBtn');
+
+const MAX_CHANNELS = 150;
+
+function makeChannelRow(value){
+  const row = document.createElement('div');
+  row.className = 'channel-row';
+  row.innerHTML = `
+    <input type="text" class="channel-field" placeholder="youtube.com/@lexfridman  or  @lexfridman" value="${value ? escapeHtml(value) : ''}">
+    <button type="button" class="remove-channel-btn" aria-label="Remove this channel" title="Remove this channel">×</button>
+  `;
+  const input = row.querySelector('.channel-field');
+  const removeBtn = row.querySelector('.remove-channel-btn');
+
+  removeBtn.addEventListener('click', () => {
+    if (channelInputsEl.children.length <= 1){ input.value = ''; input.focus(); return; }
+    row.remove();
+    updateRemoveButtons();
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const rows = Array.from(channelInputsEl.children);
+    const idx = rows.indexOf(row);
+    if (idx === rows.length - 1){
+      addChannelRow();
+    } else {
+      rows[idx + 1].querySelector('.channel-field').focus();
+    }
+  });
+
+  return row;
+}
+
+function addChannelRow(value = '', focus = true){
+  if (channelInputsEl.children.length >= MAX_CHANNELS) return;
+  const row = makeChannelRow(value);
+  channelInputsEl.appendChild(row);
+  updateRemoveButtons();
+  if (focus) row.querySelector('.channel-field').focus();
+  return row;
+}
+
+function updateRemoveButtons(){
+  const onlyOne = channelInputsEl.children.length <= 1;
+  channelInputsEl.querySelectorAll('.remove-channel-btn').forEach(btn => {
+    btn.style.visibility = onlyOne ? 'hidden' : 'visible';
+  });
+  addChannelBtn.style.display = channelInputsEl.children.length >= MAX_CHANNELS ? 'none' : '';
+}
+
+addChannelRow('', false); // seed the first, empty row
+addChannelBtn.addEventListener('click', () => addChannelRow());
+
+function getChannelInputValues(){
+  return Array.from(channelInputsEl.querySelectorAll('.channel-field')).map(el => el.value);
+}
+
+// ---------- CSV upload ----------
+let csvChannels = [];
+const csvFileInput = document.getElementById('csvFile');
+const csvStatusEl = document.getElementById('csvStatus');
+
+function looksLikeHeaderCell(cell){
+  const words = String(cell ?? '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  const keywords = new Set(['channel','channels','url','urls','link','links','handle','handles','youtube','show','shows','podcast','podcasts','name','names']);
+  return words.every(w => keywords.has(w));
+}
+
+function detectChannelColumn(rows){
+  if (!rows.length) return { colIndex: 0, startRow: 0 };
+  const firstRow = rows[0];
+  const idx = firstRow.findIndex(cell => looksLikeHeaderCell(cell));
+  if (idx !== -1) return { colIndex: idx, startRow: 1 };
+  return { colIndex: 0, startRow: 0 };
+}
+
+function renderCsvStatus(filename, count){
+  if (!count){ csvStatusEl.style.display = 'none'; csvStatusEl.innerHTML = ''; return; }
+  csvStatusEl.style.display = 'flex';
+  csvStatusEl.innerHTML = `<span>${count} channel${count===1?'':'s'} loaded from ${escapeHtml(filename)}</span><button type="button" class="clear-csv">clear</button>`;
+  csvStatusEl.querySelector('.clear-csv').addEventListener('click', () => {
+    csvChannels = [];
+    csvFileInput.value = '';
+    renderCsvStatus('', 0);
+  });
+}
+
+csvFileInput.addEventListener('change', () => {
+  const file = csvFileInput.files[0];
+  if (!file) return;
+  Papa.parse(file, {
+    skipEmptyLines: true,
+    complete: (results) => {
+      const data = results.data;
+      if (!data.length){ showError('That CSV looks empty.'); return; }
+      const { colIndex, startRow } = detectChannelColumn(data);
+      csvChannels = data.slice(startRow)
+        .map(row => (row[colIndex] ?? '').toString().trim())
+        .filter(Boolean);
+      renderCsvStatus(file.name, csvChannels.length);
+    },
+    error: () => showError('Could not read that CSV file.'),
+  });
+});
+
+function setStatus(msg){ statusRow.style.display = 'flex'; statusText.textContent = msg; }
+function clearStatus(){ statusRow.style.display = 'none'; }
+function showError(msg){
+  errorBox.style.display = 'block'; errorBox.textContent = msg;
+}
+function clearError(){
+  errorBox.style.display = 'none'; errorBox.textContent = '';
+}
+
+function parseChannelList(values){
+  const seen = new Set();
+  const out = [];
+  [...values, ...csvChannels].map(s => s.trim()).filter(Boolean).forEach(s => {
+    const key = s.toLowerCase();
+    if (!seen.has(key)){ seen.add(key); out.push(s); }
+  });
+  return out;
+}
+
+async function processChannel(rawInput, tab){
+  const ref = extractChannelRef(rawInput);
+  const channel = await resolveChannel(ref);
+  tab.channel = channel;
+  tab.label = channel.snippet.title;
+  renderAll();
+
+  const uploadsPlaylist = channel.contentDetails?.relatedPlaylists?.uploads;
+  if (!uploadsPlaylist){
+    throw new Error("This channel doesn't expose a standard uploads playlist (it may be a brand/topic page), so it can't be scanned.");
+  }
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - 18);
+  const cutoffMs = cutoff.getTime();
+
+  const statusCb = (msg) => { tab.message = msg; if (tab.id === activeTabId) setStatus(`[${tab.label}] ${msg}`); };
+  const ids = await fetchUploadIds(uploadsPlaylist, cutoffMs, statusCb);
+
+  if (!ids.length){
+    tab.status = 'empty';
+    tab.message = 'No videos found in the last 18 months for this channel.';
+    return;
+  }
+
+  statusCb(`fetching stats for ${ids.length} videos...`);
+  const details = await fetchVideoDetails(ids, statusCb);
+
+  const longform = details
+    .map(v => {
+      const durationSec = parseISODuration(v.contentDetails.duration);
+      return {
+        id: v.id,
+        title: v.snippet.title,
+        publishedAt: v.snippet.publishedAt,
+        durationSec,
+        thumbnail: v.snippet.thumbnails?.medium?.url || v.snippet.thumbnails?.default?.url || '',
+        viewCount: v.statistics.viewCount !== undefined ? parseInt(v.statistics.viewCount, 10) : null,
+        commentCount: v.statistics.commentCount !== undefined ? parseInt(v.statistics.commentCount, 10) : null,
+        guest: extractGuest(v.snippet.title, v.snippet.description || ''),
+      };
+    })
+    .filter(v => v.durationSec > 600 && v.viewCount !== null);
+
+  if (!longform.length){
+    tab.status = 'empty';
+    tab.message = 'Found videos in range, but none were over 10 minutes with visible view counts.';
+    return;
+  }
+
+  tab.rows = longform;
+  tab.status = 'ok';
+}
+
+async function processChannelWithRetry(rawInput, tab, maxRetries){
+  let lastErr;
+  for (let attempt = 0; attempt <= maxRetries; attempt++){
+    try {
+      await processChannel(rawInput, tab);
+      return;
+    } catch (err){
+      lastErr = err;
+      // Not worth retrying — these will fail again identically every time.
+      if (err.reason === 'keyInvalid' || err.reason === 'API_KEY_INVALID' || err.reason === 'quotaExceeded') throw err;
+      if (attempt < maxRetries){
+        tab.message = `hit a hiccup (${err.message || 'network error'}) — retrying...`;
+        renderAll();
+        await new Promise(res => setTimeout(res, 900 * (attempt + 1)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
+runBtn.addEventListener('click', async () => {
+  clearError();
+  tabs = [];
+  activeTabId = null;
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('bulkBar').style.display = 'none';
+
+  const channelList = parseChannelList(getChannelInputValues());
+
+  if (!channelList.length){ showError('Paste at least one channel, or upload a CSV, first.'); return; }
+
+  const truncated = channelList.length > MAX_CHANNELS;
+  const list = channelList.slice(0, MAX_CHANNELS);
+
+  tabs = list.map((raw, i) => ({
+    id: `tab-${i}`,
+    label: raw.length > 24 ? raw.slice(0, 22) + '…' : raw,
+    channel: null,
+    rows: [],
+    sortMode: 'views',
+    status: 'pending',
+    message: 'queued...',
+  }));
+  activeTabId = tabs[0].id;
+  renderAll();
+
+  runBtn.disabled = true;
+  runBtn.dataset.loading = 'true';
+  const progressTrack = document.getElementById('progressTrack');
+  const progressFill = document.getElementById('progressFill');
+  progressTrack.style.display = 'block';
+  progressFill.style.width = '0%';
+
+  for (let i = 0; i < tabs.length; i++){
+    const tab = tabs[i];
+    setStatus(`channel ${i + 1}/${tabs.length}: resolving...`);
+    try {
+      await processChannelWithRetry(list[i], tab, 2);
+    } catch (err){
+      tab.status = 'error';
+      if (err.reason === 'keyInvalid' || err.reason === 'API_KEY_INVALID'){
+        tab.message = 'The API key configured on the server was rejected by YouTube. Check YOUTUBE_API_KEY in your Vercel project settings and that "YouTube Data API v3" is enabled for it in Google Cloud Console.';
+      } else if (err.reason === 'quotaExceeded'){
+        tab.message = "This API key has hit its daily YouTube quota. Try again tomorrow or use a different key/project.";
+      } else {
+        tab.message = err.message || 'Something went wrong talking to the YouTube API.';
+      }
+    }
+    progressFill.style.width = `${Math.round(((i + 1) / tabs.length) * 100)}%`;
+    renderAll();
+  }
+
+  clearStatus();
+  progressTrack.style.display = 'none';
+  runBtn.disabled = false;
+  delete runBtn.dataset.loading;
+
+  if (truncated){
+    showError(`Only the first ${MAX_CHANNELS} channels were analyzed — trim the list and re-run for the rest.`);
+  }
+});
+
+</script>
+</body>
+</html>

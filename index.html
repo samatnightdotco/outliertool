@@ -1315,7 +1315,14 @@ async function processChannelWithRetry(rawInput, tab, maxRetries){
 
 // ---------- Guest-name search ----------
 async function searchGuestAppearances(guestName){
-  const r = await apiGet('search', { part: 'snippet', q: guestName, type: 'video', maxResults: 25, order: 'relevance' });
+  const r = await apiGet('search', {
+    part: 'snippet',
+    q: `${guestName} podcast`,
+    type: 'video',
+    videoDuration: 'long',
+    maxResults: 25,
+    order: 'relevance',
+  });
   return (r.items || [])
     .map(item => ({
       videoId: item.id?.videoId,

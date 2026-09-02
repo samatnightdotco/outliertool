@@ -321,6 +321,13 @@ colgroup col.col-views{ width: 9%; }
 colgroup col.col-view-ratio{ width: 13.5%; }
 colgroup col.col-comments{ width: 9%; }
 colgroup col.col-comment-ratio{ width: 16%; }
+colgroup col.gcol-rank{ width: 4%; }
+colgroup col.gcol-show{ width: 15%; }
+colgroup col.gcol-episode{ width: 27%; }
+colgroup col.gcol-views{ width: 9%; }
+colgroup col.gcol-view-ratio{ width: 13.5%; }
+colgroup col.gcol-comments{ width: 9%; }
+colgroup col.gcol-comment-ratio{ width: 22.5%; }
 thead th{
   text-align: left; font-size: var(--text-xs); letter-spacing: 0.06em; text-transform: uppercase;
   color: var(--color-ink-3); padding: var(--space-sm) var(--space-md);
@@ -714,6 +721,117 @@ function renderBulkBar(){
   if (!okCount){ bulkBar.style.display = 'none'; return; }
   bulkBar.style.display = 'flex';
   document.getElementById('bulkSummary').textContent = `${okCount} of ${tabs.length} show${tabs.length===1?'':'s'} ready to export`;
+}
+
+// ---------- Guest-search flat results (all appearances, one combined list) ----------
+let guestRows = [];
+let guestSortMode = 'views';
+let guestSearchedName = '';
+
+function renderGuestResults(){
+  document.getElementById('bulkBar').style.display = 'none';
+  const resultsEl = document.getElementById('results');
+  if (!guestRows.length){ resultsEl.innerHTML = ''; return; }
+
+  const sorted = [...guestRows].sort((a, b) => {
+    if (guestSortMode === 'views') return b.viewRatio - a.viewRatio;
+    return (b.commentRatio ?? -1) - (a.commentRatio ?? -1);
+  });
+  const maxViewRatio = Math.max(...guestRows.map(r => r.viewRatio), 1);
+  const maxCommentRatio = Math.max(...guestRows.map(r => r.commentRatio ?? 0), 1);
+
+  resultsEl.innerHTML = `
+    <div class="toolbar">
+      <div class="title">${escapeHtml(guestSearchedName)} — ${guestRows.length} appearance${guestRows.length===1?'':'s'} found</div>
+      <div class="sort-btns" role="group" aria-label="sort outliers">
+        <button class="sort-btn by-views" data-sort="views" aria-pressed="${guestSortMode==='views'}" type="button">sort: view outliers</button>
+        <button class="sort-btn by-comments" data-sort="comments" aria-pressed="${guestSortMode==='comments'}" type="button">sort: comment outliers</button>
+        <button class="sort-btn export-btn" id="exportGuestBtn" type="button">export csv ↓</button>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <div class="table-scroll">
+      <table>
+        <colgroup>
+          <col class="gcol-rank"><col class="gcol-show"><col class="gcol-episode">
+          <col class="gcol-views"><col class="gcol-view-ratio"><col class="gcol-comments"><col class="gcol-comment-ratio">
+        </colgroup>
+        <thead>
+          <tr><th>#</th><th>show</th><th>episode</th><th>views</th><th>view ratio</th><th>comments</th><th>comment ratio</th></tr>
+        </thead>
+        <tbody>
+          ${sorted.map((r,i) => `
+            <tr>
+              <td class="rank">${i+1}</td>
+              <td class="guest">${escapeHtml(r.show)}</td>
+              <td>
+                <div class="episode-cell">
+                  <a href="https://youtube.com/watch?v=${r.id}" target="_blank" rel="noopener" class="thumb-link" tabindex="-1" aria-hidden="true">
+                    ${r.thumbnail ? `<img class="thumb" src="${r.thumbnail}" alt="" loading="lazy" width="96" height="54">` : `<span class="thumb thumb-empty"></span>`}
+                  </a>
+                  <div class="episode-text">
+                    <a class="vid-title" href="https://youtube.com/watch?v=${r.id}" target="_blank" rel="noopener">${escapeHtml(r.title)}</a>
+                    <div class="vid-meta">${fmtDate(r.publishedAt)} · ${Math.round(r.durationSec/60)} min</div>
+                  </div>
+                </div>
+              </td>
+              <td class="num">${fmtNum(r.viewCount)}</td>
+              <td>
+                <div class="meter-cell">
+                  <div class="meter-track"><div class="meter-fill views" style="width:${Math.min(100, (r.viewRatio/maxViewRatio)*100)}%"></div></div>
+                  <div class="ratio-val ${r.viewRatio>=1.5?'hot-views':''}">${fmtRatio(r.viewRatio)}</div>
+                </div>
+              </td>
+              <td class="num">${r.commentCount !== null ? fmtNum(r.commentCount) : '<span class="na">disabled</span>'}</td>
+              <td>
+                ${r.commentRatio !== null ? `
+                <div class="meter-cell">
+                  <div class="meter-track"><div class="meter-fill comments" style="width:${Math.min(100, (r.commentRatio/maxCommentRatio)*100)}%"></div></div>
+                  <div class="ratio-val ${r.commentRatio>=1.5?'hot-comments':''}">${fmtRatio(r.commentRatio)}</div>
+                </div>` : '<span class="na">—</span>'}
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+      </div>
+    </div>
+  `;
+
+  resultsEl.querySelectorAll('.sort-btn[data-sort]').forEach(btn => {
+    btn.addEventListener('click', () => { guestSortMode = btn.dataset.sort; renderGuestResults(); });
+  });
+  document.getElementById('exportGuestBtn').addEventListener('click', () => exportGuestCSV(sorted));
+}
+
+function exportGuestCSV(sortedRows){
+  const header = ['rank','show','title','url','published','duration_min','views','view_ratio','comments','comment_ratio'];
+  const lines = [header.join(',')];
+  sortedRows.forEach((r, i) => {
+    lines.push([
+      i + 1,
+      csvEscape(r.show),
+      csvEscape(r.title),
+      `https://youtube.com/watch?v=${r.id}`,
+      r.publishedAt.slice(0, 10),
+      Math.round(r.durationSec / 60),
+      r.viewCount,
+      r.viewRatio.toFixed(2),
+      r.commentCount ?? '',
+      r.commentRatio !== null ? r.commentRatio.toFixed(2) : ''
+    ].join(','));
+  });
+  const csv = lines.join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const safeName = guestSearchedName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'guest';
+  a.href = url;
+  a.download = `appearances-${safeName}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 function renderTabContent(tab){
@@ -1233,11 +1351,10 @@ async function fetchChannelById(channelId){
   throw new Error('Could not load details for this channel.');
 }
 
-async function processGuestChannel(group, guestName, tab){
+async function processGuestChannel(group, guestName, statusCb){
   const channel = await fetchChannelById(group.channelId);
-  tab.channel = channel;
-  tab.label = channel.snippet.title;
-  renderAll();
+  const showName = channel.snippet.title;
+  statusCb(`[${showName}] scanning uploads...`);
 
   const uploadsPlaylist = channel.contentDetails?.relatedPlaylists?.uploads;
   if (!uploadsPlaylist){
@@ -1247,11 +1364,10 @@ async function processGuestChannel(group, guestName, tab){
   cutoff.setMonth(cutoff.getMonth() - 18);
   const cutoffMs = cutoff.getTime();
 
-  const statusCb = (msg) => { tab.message = msg; if (tab.id === activeTabId) setStatus(`[${tab.label}] ${msg}`); };
-  const ids = await fetchUploadIds(uploadsPlaylist, cutoffMs, statusCb);
+  const ids = await fetchUploadIds(uploadsPlaylist, cutoffMs, (msg) => statusCb(`[${showName}] ${msg}`));
 
-  statusCb(`fetching stats for ${ids.length} videos...`);
-  const details = ids.length ? await fetchVideoDetails(ids, statusCb) : [];
+  statusCb(`[${showName}] fetching stats for ${ids.length} videos...`);
+  const details = ids.length ? await fetchVideoDetails(ids, (msg) => statusCb(`[${showName}] ${msg}`)) : [];
 
   // The matched video(s) from search might be older than the normal 18-month window —
   // fetch them directly too, so a real appearance never gets missed just because it
@@ -1260,12 +1376,12 @@ async function processGuestChannel(group, guestName, tab){
   const missingIds = group.videoIds.filter(id => !haveIds.has(id));
   let extraDetails = [];
   if (missingIds.length){
-    statusCb('fetching the specific matched video(s)...');
-    extraDetails = await fetchVideoDetails(missingIds, statusCb);
+    statusCb(`[${showName}] fetching the specific matched video(s)...`);
+    extraDetails = await fetchVideoDetails(missingIds, (msg) => statusCb(`[${showName}] ${msg}`));
   }
 
   const matchedIds = new Set(group.videoIds);
-  const longform = [...details, ...extraDetails]
+  const allRows = [...details, ...extraDetails]
     .map(v => {
       const durationSec = parseISODuration(v.contentDetails.duration);
       return {
@@ -1276,39 +1392,56 @@ async function processGuestChannel(group, guestName, tab){
         thumbnail: v.snippet.thumbnails?.medium?.url || v.snippet.thumbnails?.default?.url || '',
         viewCount: v.statistics.viewCount !== undefined ? parseInt(v.statistics.viewCount, 10) : null,
         commentCount: v.statistics.commentCount !== undefined ? parseInt(v.statistics.commentCount, 10) : null,
-        guest: extractGuest(v.snippet.title, v.snippet.description || ''),
         isGuestMatch: matchedIds.has(v.id),
       };
     })
     .filter(v => v.durationSec > 600 && v.viewCount !== null);
 
-  if (!longform.length){
-    tab.status = 'empty';
-    tab.message = 'No long-form videos found for this channel.';
-    return;
-  }
-  if (!longform.some(v => v.isGuestMatch)){
-    tab.status = 'empty';
-    tab.message = `Matched in search, but couldn't confirm a long-form (10+ min) episode featuring "${guestName}" here.`;
-    return;
+  if (!allRows.length){
+    const err = new Error('No long-form videos found for this channel.');
+    err.empty = true;
+    throw err;
   }
 
-  tab.rows = longform;
-  tab.status = 'ok';
+  // Compute the show's own average views/comments from its full episode set —
+  // exactly the same math as the main channel-scan feature — then keep only the
+  // matched episode(s), carrying their ratio against that average forward.
+  const withComments = allRows.filter(r => r.commentCount !== null);
+  const avgViews = allRows.reduce((a, r) => a + r.viewCount, 0) / allRows.length;
+  const avgComments = withComments.length ? withComments.reduce((a, r) => a + r.commentCount, 0) / withComments.length : 0;
+
+  const matched = allRows.filter(r => r.isGuestMatch).map(r => ({
+    show: showName,
+    id: r.id,
+    title: r.title,
+    publishedAt: r.publishedAt,
+    durationSec: r.durationSec,
+    thumbnail: r.thumbnail,
+    viewCount: r.viewCount,
+    commentCount: r.commentCount,
+    viewRatio: avgViews ? r.viewCount / avgViews : 0,
+    commentRatio: (r.commentCount !== null && avgComments) ? r.commentCount / avgComments : null,
+  }));
+
+  if (!matched.length){
+    const err = new Error(`Matched in search, but couldn't confirm a long-form (10+ min) episode featuring "${guestName}" here.`);
+    err.empty = true;
+    throw err;
+  }
+
+  return matched;
 }
 
-async function processGuestChannelWithRetry(group, guestName, tab, maxRetries){
+async function processGuestChannelWithRetry(group, guestName, statusCb, maxRetries){
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++){
     try {
-      await processGuestChannel(group, guestName, tab);
-      return;
+      return await processGuestChannel(group, guestName, statusCb);
     } catch (err){
       lastErr = err;
-      if (err.reason === 'keyInvalid' || err.reason === 'API_KEY_INVALID' || err.reason === 'quotaExceeded') throw err;
+      if (err.empty || err.reason === 'keyInvalid' || err.reason === 'API_KEY_INVALID' || err.reason === 'quotaExceeded') throw err;
       if (attempt < maxRetries){
-        tab.message = `hit a hiccup (${err.message || 'network error'}) — retrying...`;
-        renderAll();
+        statusCb(`hit a hiccup (${err.message || 'network error'}) — retrying...`);
         await new Promise(res => setTimeout(res, 900 * (attempt + 1)));
       }
     }
@@ -1320,6 +1453,7 @@ runBtn.addEventListener('click', async () => {
   clearError();
   tabs = [];
   activeTabId = null;
+  guestRows = [];
   document.getElementById('results').innerHTML = '';
   document.getElementById('bulkBar').style.display = 'none';
 
@@ -1393,6 +1527,11 @@ guestSearchBtn.addEventListener('click', async () => {
   guestSearchBtn.disabled = true;
   guestSearchBtn.dataset.loading = 'true';
   runBtn.disabled = true;
+  tabs = [];
+  activeTabId = null;
+  guestRows = [];
+  guestSearchedName = guestName;
+  document.getElementById('results').innerHTML = '';
   const progressTrack = document.getElementById('progressTrack');
   const progressFill = document.getElementById('progressFill');
 
@@ -1407,59 +1546,49 @@ guestSearchBtn.addEventListener('click', async () => {
     }
 
     const groups = groupSearchMatchesByChannel(matches, guestName, MAX_GUEST_CHANNELS);
-    tabs = groups.map((g, i) => ({
-      id: `guest-tab-${i}`,
-      label: g.channelTitle,
-      channel: null,
-      rows: [],
-      sortMode: 'views',
-      status: 'pending',
-      message: 'queued...',
-    }));
-    activeTabId = tabs[0].id;
-    renderAll();
-
     progressTrack.style.display = 'block';
     progressFill.style.width = '0%';
 
-    for (let i = 0; i < tabs.length; i++){
-      const tab = tabs[i];
-      setStatus(`channel ${i + 1}/${tabs.length}: checking ${groups[i].channelTitle}...`);
+    let skippedCount = 0;
+    let erroredCount = 0;
+
+    for (let i = 0; i < groups.length; i++){
+      const group = groups[i];
+      const statusCb = (msg) => setStatus(`channel ${i + 1}/${groups.length}: ${msg}`);
+      statusCb(`checking ${group.channelTitle}...`);
       try {
-        await processGuestChannelWithRetry(groups[i], guestName, tab, 2);
+        const matched = await processGuestChannelWithRetry(group, guestName, statusCb, 2);
+        guestRows.push(...matched);
+        renderGuestResults();
       } catch (err){
-        tab.status = 'error';
-        if (err.reason === 'keyInvalid' || err.reason === 'API_KEY_INVALID'){
-          tab.message = 'The API key configured on the server was rejected by YouTube. Check YOUTUBE_API_KEY in your Vercel project settings.';
-        } else if (err.reason === 'quotaExceeded'){
-          tab.message = 'This has hit the daily YouTube quota (guest search uses a lot more quota per run). Try again tomorrow.';
+        if (err.reason === 'keyInvalid' || err.reason === 'API_KEY_INVALID' || err.reason === 'quotaExceeded') throw err;
+        if (err.empty){
+          skippedCount++;
         } else {
-          tab.message = err.message || 'Something went wrong talking to the YouTube API.';
+          erroredCount++;
         }
       }
-      progressFill.style.width = `${Math.round(((i + 1) / tabs.length) * 100)}%`;
-      renderAll();
+      progressFill.style.width = `${Math.round(((i + 1) / groups.length) * 100)}%`;
     }
 
-    // Drop channels that matched the search but turned out not to have a confirmed appearance —
-    // no point leaving empty/dead tabs cluttering the results.
-    const keep = tabs.filter(t => t.status !== 'empty');
     clearStatus();
     progressTrack.style.display = 'none';
 
-    if (!keep.length){
-      tabs = [];
+    if (!guestRows.length){
       document.getElementById('results').innerHTML = '';
       showError(`Found "${guestName}" in search results, but couldn't confirm a long-form podcast appearance on any of the top ${groups.length} matching channels. Try a fuller name (e.g. add a last name) or check spelling.`);
     } else {
-      tabs = keep;
-      activeTabId = tabs[0].id;
-      renderAll();
+      renderGuestResults();
+      if (erroredCount > 0){
+        showError(`Note: ${erroredCount} of ${groups.length} matching channels couldn't be checked (network/quota hiccups). Showing the ${guestRows.length} appearance${guestRows.length===1?'':'s'} found across the rest.`);
+      }
     }
   } catch (err){
     clearStatus();
     progressTrack.style.display = 'none';
-    if (err.reason === 'quotaExceeded'){
+    if (err.reason === 'keyInvalid' || err.reason === 'API_KEY_INVALID'){
+      showError('The API key configured on the server was rejected by YouTube. Check YOUTUBE_API_KEY in your Vercel project settings.');
+    } else if (err.reason === 'quotaExceeded'){
       showError('This has hit the daily YouTube quota — guest search costs much more quota per run than the channel scan. Try again tomorrow.');
     } else {
       showError(err.message || 'Something went wrong searching YouTube.');
